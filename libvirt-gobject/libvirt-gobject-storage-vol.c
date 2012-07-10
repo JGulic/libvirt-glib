@@ -349,3 +349,77 @@ gboolean gvir_storage_vol_resize(GVirStorageVol *vol,
 
     return TRUE;
 }
+
+/**
+ * gvir_storage_vol_download:
+ * @vol: the storage volume to download from
+ * @stream: stream to use as output
+ * @offset: position in @vol to start reading from
+ * @length: limit on amount of data to download
+ * @flags: extra flags, not used yet, pass 0
+ *
+ * Returns: #TRUE of success, #FALSE otherwise
+ */
+gboolean gvir_storage_vol_download(GVirStorageVol *vol,
+                                   GVirStream *stream,
+                                   unsigned long long offset,
+                                   unsigned long long length,
+                                   guint flags,
+                                   GError **err)
+{
+    virStreamPtr st = NULL;
+
+    g_object_get(stream, "handle", &st, NULL);
+
+    g_return_val_if_fail(GVIR_IS_STORAGE_VOL(vol), FALSE);
+    g_return_val_if_fail(GVIR_IS_STREAM(stream), FALSE);
+    g_return_val_if_fail(err == NULL || *err == NULL, FALSE);
+
+    if(virStorageVolDownload(vol->priv->handle, st, offset, length, 0) < 0) {
+       gvir_set_error_literal(err,
+                              GVIR_STORAGE_VOL_ERROR,
+                              0,
+                              "Unable to downlaod volume storage");
+
+       return FALSE;
+    }
+   
+    return TRUE;
+}
+
+/**
+ * gvir_storage_vol_upload:
+ * @vol: the storage volume to upload
+ * @stream: stream to use as input
+ * @offset: position in @vol to start to write to
+ * @length: limit on amount of data to upload
+ * @flags: the flags, not set yet, pass 0
+ *
+ * Retirns: #TRUE of success, #FALSE otherwise
+ */
+gboolean gvir_storage_vol_upload(GVirStorageVol *vol,
+                                 GVirStream *stream,
+                                 unsigned long long offset,
+                                 unsigned long long length,
+                                 guint flags,
+                                 GError **err)
+{
+    virStreamPtr st = NULL;
+
+    g_object_get(stream, "handle", &st, NULL);
+
+    g_return_val_if_fail(GVIR_IS_STORAGE_VOL(vol), FALSE);
+    g_return_val_if_fail(GVIR_IS_STREAM(stream), FALSE);
+    g_return_val_if_fail(err == NULL || *err == NULL, FALSE);
+
+    if(virStorageVolUpload(vol->priv->handle, st, offset, length, 0) < 0) {
+       gvir_set_error_literal(err,
+                              GVIR_STORAGE_VOL_ERROR,
+                              0,
+                              "Unable to upload to stream");
+      
+       return FALSE;
+    }
+    
+    return TRUE;
+}

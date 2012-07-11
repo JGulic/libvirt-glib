@@ -55,6 +55,7 @@ enum {
     VIR_RESUMED,
     VIR_STOPPED,
     VIR_UPDATED,
+    VIR_SAVED_TO_FILE,
     LAST_SIGNAL
 };
 
@@ -224,6 +225,16 @@ static void gvir_domain_class_init(GVirDomainClass *klass)
                                         g_cclosure_marshal_VOID__VOID,
                                         G_TYPE_NONE,
                                         0);
+
+    signals[VIR_SAVED_TO_FILE] = g_signal_new("saved_to_file",
+                                              G_OBJECT_CLASS_TYPE(object_class),
+                                              G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | 
+                                              G_SIGNAL_NO_HOOKS | G_SIGNAL_DETAILED, 
+                                              G_STRUCT_OFFSET(GVirDomainClass, saved_to_file),
+                                              NULL, NULL,
+                                              g_cclosure_marshal_VOID__VOID,
+                                              G_TYPE_NONE,
+                                              0); 
 
     g_type_class_add_private(klass, sizeof(GVirDomainPrivate));
 }
@@ -555,6 +566,181 @@ gboolean gvir_domain_reboot(GVirDomain *dom,
 
     return TRUE;
 }
+
+/**
+ * gvir_domain_save_to_file:
+ * @dom: the domain
+ * @filename: 
+ * @custom_xml: 
+ * @flags: the flags
+ *
+ *
+ *
+gboolean gvir_domain_save_to_file(GVirDomain *dom,
+                                  const gchar *filename,
+                                  gchar *custom_xml,
+                                  guint flags,
+                                  GError **err)
+{
+    GVirDomainPrivate *priv;
+    GVirConfigDomain *conf;
+    int ret;
+
+//    conf = gvir_domain_get_config(dom, 0, err);
+
+    g_return_val_if_fail(GVIR_IS_DOMAIN(dom), FALSE);
+    g_return_val_if_fail(err == NULL || *err == NULL, FALSE);
+
+    priv = dom->priv;
+        conf = gvir_domain_get_config(dom, 0, err);
+    custom_xml = gvir_config_object_to_xml(GVIR_CONFIG_OBJECT(conf));
+
+    //g_return_val_if_fail(custom_xml != NULL, FALSE);
+
+    if (flags || custom_xml) {
+        ret = virDomainSaveFlags(priv->handle, filename, custom_xml, flags);
+        g_free (custom_xml);
+    }
+    else {
+        ret = virDomainSave(priv->handle, filename);
+        g_free (custom_xml);
+    }
+    if (ret < 0) {
+        gvir_set_error_literal(err, GVIR_DOMAIN_ERROR,
+                                 0,
+                                 "Unable to save domain to file");
+        return FALSE;
+    }
+    
+    return TRUE;
+}*/
+
+gboolean gvir_domain_save_to_file_config(GVirDomain *dom,
+                                         gchar *filename,
+                                         GVirConfigDomain *conf,
+                                         guint flags,
+                                         GError **err)
+{
+    GVirDomainPrivate *priv;    
+    gchar *custom_xml;
+    int ret;
+    
+    g_return_val_if_fail(GVIR_IS_DOMAIN(dom), FALSE);
+    g_return_val_if_fail(GVIR_CONFIG_IS_DOMAIN (conf), FALSE);
+    g_return_val_if_fail(err == NULL || *err == NULL, FALSE);
+
+    priv = dom->priv;
+    custom_xml = gvir_config_object_to_xml(GVIR_CONFIG_OBJECT(conf));
+   
+    if (flags || custom_xml) {
+        ret = virDomainSaveFlags(priv->handle, filename, custom_xml, flags);
+        g_free (custom_xml);
+    }
+    else {
+        ret = virDomainSave(priv->handle, filename);
+        g_free (custom_xml);
+    }
+    if (ret < 0) {
+        gvir_set_error_literal(err, GVIR_DOMAIN_ERROR,
+                                 0,
+                                 "Unable to save domain to file");
+        return FALSE;
+    }
+    
+    return TRUE;
+}
+
+typedef struct {
+    gchar *filename;
+    gchar *custom_xml;
+    guint flags;
+} DomainSaveToFileData;
+
+static void domain_save_to_file_data_free(DomainSaveToFileData *data)
+{
+    g_slice_free(DomainSaveToFileData, data);
+}
+
+static void
+gvir_domain_save_to_file_helper(GSimpleAsyncResult *res,
+                                GObject *object,
+                                GCancellable *cancellable G_GNUC_UNUSED)
+{
+    GVirDomain *dom = GVIR_DOMAIN(object);
+    DomainSaveToFileData *data;
+    GVirConfigDomain *conf;
+    GError *err = NULL;
+  //  gchar *xml;
+
+    data = g_simple_async_result_get_op_res_gpointer(res);
+//    xml = data->filename;
+    conf = gvir_domain_get_config(dom, data->flags, &err);
+
+    if (!gvir_domain_save_to_file_config(dom, data->filename, conf, data->flags, &err))
+        g_simple_async_result_take_error(res, err);
+}
+
+/**
+ * gvir_domain_save_to_file_async:
+ * @dom: the domain
+ * @flags: the flags
+ * @cancellable: cancallation object
+ * @callback: (scope async): completion callback
+ * @user_data: (closure): opaque data for callback
+ *
+ * Asynchronous variant of #gvir_domain_save_to_file.
+ */
+
+void gvir_domain_save_to_file_async (GVirDomain *dom,
+                                     gchar *filename,
+                                     GVirConfigDomain *conf,
+                                     guint flags,
+                                     GCancellable *cancellable,
+                                     GAsyncReadyCallback callback,
+                                     gpointer user_data)
+{
+    GSimpleAsyncResult *res;
+    DomainSaveToFileData *data;
+    gchar *xml;
+ 
+    g_return_if_fail(GVIR_IS_DOMAIN(dom));
+    g_return_if_fail(GVIR_CONFIG_IS_DOMAIN (conf));
+    g_return_if_fail((cancellable == NULL) || G_IS_CANCELLABLE(cancellable));
+
+    xml = gvir_config_object_to_xml(GVIR_CONFIG_OBJECT(conf));
+
+    data = g_slice_new0(DomainSaveToFileData);
+    data->filename = filename;
+    data->custom_xml = xml;
+    data->flags = flags;
+
+    res = g_simple_async_result_new(G_OBJECT(dom),
+                                    callback,
+                                    user_data,
+                                    gvir_domain_save_to_file_async);
+    g_simple_async_result_set_op_res_gpointer(res, data, (GDestroyNotify)domain_save_to_file_data_free);
+
+    g_simple_async_result_run_in_thread(res,
+                                        gvir_domain_save_to_file_helper,
+                                        G_PRIORITY_DEFAULT,
+                                        cancellable);
+   
+    g_object_unref(res);
+}
+
+gboolean gvir_domain_save_to_file_finish(GVirDomain *dom,
+                                         GAsyncResult *result,
+                                         GError **err)
+{
+    g_return_val_if_fail(GVIR_IS_DOMAIN(dom), FALSE);
+    g_return_val_if_fail(g_simple_async_result_is_valid(result, G_OBJECT(dom), gvir_domain_save_to_file_async), FALSE);
+    g_return_val_if_fail(err == NULL || *err == NULL, FALSE);
+
+    if (g_simple_async_result_propagate_error(G_SIMPLE_ASYNC_RESULT(result), err))
+        return FALSE;
+
+    return TRUE;
+} 
 
 /**
  * gvir_domain_get_config:

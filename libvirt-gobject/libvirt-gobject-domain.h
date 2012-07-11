@@ -65,6 +65,7 @@ struct _GVirDomainClass
     void (*resumed)(GVirDomain *dom);
     void (*updated)(GVirDomain *dom);
     void (*suspended)(GVirDomain *dom);
+    void (*saved_to_file) (GVirDomain *dom);
 
     gpointer padding[20];
 };
@@ -147,6 +148,29 @@ gboolean gvir_domain_shutdown(GVirDomain *dom,
 gboolean gvir_domain_reboot(GVirDomain *dom,
                             guint flags,
                             GError **err);
+/*gboolean gvir_domain_save_to_file(GVirDomain *dom,
+                                  const gchar *filename,
+                                  gchar *custom_xml,             
+                                  guint flags,
+                                  GError **err);*/
+
+void gvir_domain_save_to_file_async (GVirDomain *dom,
+                                     gchar *filename,
+                                     GVirConfigDomain *conf,
+                                     guint flags,
+                                     GCancellable *cancellable,
+                                     GAsyncReadyCallback callback,
+                                     gpointer user_data);
+
+gboolean gvir_domain_save_to_file_finish(GVirDomain *dom,
+                                  GAsyncResult *result,
+                                  GError **err);
+
+gboolean gvir_domain_save_to_file_config(GVirDomain *dom,
+                                         gchar *filename,
+                                         GVirConfigDomain *conf,
+                                         guint flags,
+                                         GError **err);
 
 GVirDomainInfo *gvir_domain_get_info(GVirDomain *dom,
                                      GError **err);
